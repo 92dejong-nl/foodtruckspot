@@ -20,6 +20,7 @@ export default function UploadPage() {
   const [parsedData, setParsedData] = useState<ParsedData | null>(null);
   const [error, setError] = useState<string>('');
   const [isDragOver, setIsDragOver] = useState(false);
+  const [debugInfo, setDebugInfo] = useState<string>('');
 
   const validateFile = (file: File): string | null => {
     if (!file.name.toLowerCase().endsWith('.csv')) {
@@ -47,44 +48,99 @@ export default function UploadPage() {
             return;
           }
 
-          const headers = lines[0].toLowerCase().split(',').map(h => h.trim());
+          // Parse headers with better handling
+          const headerLine = lines[0];
+          console.log('Raw header line:', headerLine);
+          
+          const rawHeaders = headerLine.split(',').map(h => h.trim().replace(/['"]/g, ''));
+          console.log('Raw headers:', rawHeaders);
+          
+          const headers = rawHeaders.map(h => h.toLowerCase());
+          console.log('Processed headers:', headers);
+          
+          // Required headers (case-insensitive)
           const requiredHeaders = ['datum', 'locatie', 'omzet'];
-          const missingHeaders = requiredHeaders.filter(h => !headers.includes(h));
+          console.log('Required headers:', requiredHeaders);
+          
+          // Check for missing headers
+          const missingHeaders = requiredHeaders.filter(required => {
+            const found = headers.some(header => header === required);
+            console.log(`Checking for '${required}':`, found);
+            return !found;
+          });
           
           if (missingHeaders.length > 0) {
-            reject(`Ontbrekende kolommen: ${missingHeaders.join(', ')}. Verwacht: Datum, Locatie, Omzet`);
+            console.log('Missing headers:', missingHeaders);
+            console.log('Available headers:', headers);
+            reject(`Ontbrekende kolommen: ${missingHeaders.join(', ')}. 
+            
+Gevonden kolommen: ${rawHeaders.join(', ')}
+Verwacht: Datum, Locatie, Omzet
+
+Tip: Zorg ervoor dat je kolommen exact deze namen hebben (hoofdletters maken niet uit).`);
             return;
           }
+
+          // Find column indices
+          const datumIndex = headers.findIndex(h => h === 'datum');
+          const locatieIndex = headers.findIndex(h => h === 'locatie');
+          const omzetIndex = headers.findIndex(h => h === 'omzet');
+          
+          console.log('Column indices - Datum:', datumIndex, 'Locatie:', locatieIndex, 'Omzet:', omzetIndex);
 
           const data: CSVData[] = [];
           const errors: string[] = [];
 
-          for (let i = 1; i < lines.length && i <= 6; i++) { // Parse first 5 data rows for preview
-            const values = lines[i].split(',').map(v => v.trim());
-            if (values.length >= 3) {
+          // Parse data rows (limit to first 5 for preview)
+          const dataLines = lines.slice(1);
+          const previewLines = dataLines.slice(0, 5);
+          
+          for (let i = 0; i < previewLines.length; i++) {
+            const line = previewLines[i];
+            const values = line.split(',').map(v => v.trim().replace(/['"]/g, ''));
+            
+            if (values.length >= Math.max(datumIndex, locatieIndex, omzetIndex) + 1) {
               data.push({
-                datum: values[headers.indexOf('datum')],
-                locatie: values[headers.indexOf('locatie')], 
-                omzet: values[headers.indexOf('omzet')]
+                datum: values[datumIndex] || '',
+                locatie: values[locatieIndex] || '',
+                omzet: values[omzetIndex] || ''
               });
             }
           }
 
+          console.log('Parsed data preview:', data);
+          console.log('Total data rows:', dataLines.length);
+
+          // Set debug info for development
+          setDebugInfo(`
+Debug Info:
+- File naam: ${file.name}
+- File grootte: ${file.size} bytes
+- Headers gevonden: ${rawHeaders.join(', ')}
+- Datum kolom index: ${datumIndex}
+- Locatie kolom index: ${locatieIndex}
+- Omzet kolom index: ${omzetIndex}
+- Aantal data rijen: ${dataLines.length}
+- Preview rijen: ${data.length}
+          `.trim());
+
           resolve({
             data,
-            totalRows: lines.length - 1,
+            totalRows: dataLines.length,
             errors
           });
-        } catch {
+        } catch (error) {
+          console.error('CSV parsing error:', error);
           reject('Er ging iets mis bij het lezen van het CSV bestand.');
         }
       };
-      reader.readAsText(file);
+      reader.readAsText(file, 'UTF-8');
     });
   };
 
   const handleFileUpload = async (file: File) => {
     setError('');
+    setDebugInfo('');
     setUploadState('uploading');
 
     const validationError = validateFile(file);
@@ -207,9 +263,11 @@ export default function UploadPage() {
             {/* Error Message */}
             {error && (
               <div className="mt-6 bg-red-50 border border-red-200 rounded-lg p-4">
-                <div className="flex items-center">
-                  <span className="text-red-600 mr-3">⚠️</span>
-                  <p className="text-red-700">{error}</p>
+                <div className="flex items-start">
+                  <span className="text-red-600 mr-3 mt-1">⚠️</span>
+                  <div className="flex-1">
+                    <p className="text-red-700 whitespace-pre-line">{error}</p>
+                  </div>
                 </div>
               </div>
             )}
@@ -297,6 +355,14 @@ export default function UploadPage() {
                 ↻ Upload een ander bestand
               </button>
             </div>
+          </div>
+        )}
+        
+        {/* Debug Info - Only show in development */}
+        {debugInfo && process.env.NODE_ENV === 'development' && (
+          <div className="mt-8 bg-gray-100 border border-gray-300 rounded-lg p-4">
+            <h3 className="font-semibold text-gray-900 mb-2">Debug Informatie:</h3>
+            <pre className="text-sm text-gray-700 whitespace-pre-line">{debugInfo}</pre>
           </div>
         )}
       </div>
