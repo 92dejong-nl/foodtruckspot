@@ -59,8 +59,8 @@ export default function Home() {
           
           <div className="text-center">
             <div className="mb-4">
-              <Link href="/demo" className="bg-green-600 hover:bg-green-700 text-white px-8 py-4 rounded-lg text-lg font-semibold transition-colors inline-block">
-                Bekijk de 2 min demo
+              <Link href="/upload" className="bg-green-600 hover:bg-green-700 text-white px-8 py-4 rounded-lg text-lg font-semibold transition-colors inline-block">
+                Upload je data
               </Link>
             </div>
             <p className="text-sm text-slate-600">
@@ -194,7 +194,7 @@ export default function Home() {
                     <span className="text-slate-700">Onbeperkte toegang tot je interactieve dashboard</span>
                   </li>
                 </ul>
-                <Link href="/start" className="w-full bg-green-600 hover:bg-green-700 text-white py-4 px-6 rounded-lg text-lg font-semibold transition-colors block text-center">
+                <Link href="/upload" className="w-full bg-green-600 hover:bg-green-700 text-white py-4 px-6 rounded-lg text-lg font-semibold transition-colors block text-center">
                   Start je abonnement
                 </Link>
               </div>
