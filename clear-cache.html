@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Clear Cache</title>
+</head>
+<body>
+    <h1>Clear Cache</h1>
+    <button onclick="clearAll()">Clear All Storage</button>
+    <div id="result"></div>
+    
+    <script>
+        function clearAll() {
+            // Clear session storage
+            sessionStorage.clear();
+            
+            // Clear local storage
+            localStorage.clear();
+            
+            document.getElementById('result').innerHTML = 
+                '<p>✅ Session storage and local storage cleared!</p>' +
+                '<p>Go back to <a href="http://localhost:3001">http://localhost:3001</a> and upload new data.</p>';
+        }
+        
+        // Show current storage
+        document.body.innerHTML += '<h2>Current Storage:</h2>';
+        document.body.innerHTML += '<p>Session: ' + Object.keys(sessionStorage).length + ' items</p>';
+        document.body.innerHTML += '<p>Local: ' + Object.keys(localStorage).length + ' items</p>';
+        document.body.innerHTML += document.body.innerHTML;
+    </script>
+</body>
+</html>

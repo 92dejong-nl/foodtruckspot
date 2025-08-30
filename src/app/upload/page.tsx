@@ -1,7 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { analyzeData, analyzeDataWithWeather, AnalysisResult } from '@/lib/analysis';
+import { FlexibleParser } from '@/lib/flexibleParser';
 
 interface CSVData {
   datum: string;
@@ -13,127 +16,266 @@ interface ParsedData {
   data: CSVData[];
   totalRows: number;
   errors: string[];
+  detectedFormat?: {
+    separator: string;
+    dateFormat: string;
+    columnOrder: string[];
+    hasHeaders: boolean;
+  };
 }
 
 export default function UploadPage() {
-  const [uploadState, setUploadState] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
+  const router = useRouter();
+  const [uploadState, setUploadState] = useState<'idle' | 'uploading' | 'success' | 'error' | 'analyzing'>('idle');
   const [parsedData, setParsedData] = useState<ParsedData | null>(null);
   const [error, setError] = useState<string>('');
   const [isDragOver, setIsDragOver] = useState(false);
   const [debugInfo, setDebugInfo] = useState<string>('');
+  const [includeWeather, setIncludeWeather] = useState<boolean>(true);
+  const [weatherApiKey, setWeatherApiKey] = useState<string>('');
+  const [includeAI, setIncludeAI] = useState<boolean>(true);
+  const [claudeApiKey, setClaudeApiKey] = useState<string>('');
+  
+  // Load saved API key from localStorage on component mount
+  useEffect(() => {
+    const savedApiKey = localStorage.getItem('weatherApiKey');
+    const savedWeatherPreference = localStorage.getItem('includeWeather');
+    const savedClaudeApiKey = localStorage.getItem('claudeApiKey');
+    const savedAIPreference = localStorage.getItem('includeAI');
+    
+    if (savedApiKey) {
+      setWeatherApiKey(savedApiKey);
+    }
+    if (savedWeatherPreference === 'true') {
+      setIncludeWeather(true);
+    }
+    if (savedClaudeApiKey) {
+      setClaudeApiKey(savedClaudeApiKey);
+    }
+    if (savedAIPreference === 'true') {
+      setIncludeAI(true);
+    }
+  }, []);
+  
+  // Save API key to localStorage when it changes
+  const handleApiKeyChange = (value: string) => {
+    setWeatherApiKey(value);
+    if (value.trim()) {
+      localStorage.setItem('weatherApiKey', value.trim());
+    } else {
+      localStorage.removeItem('weatherApiKey');
+    }
+  };
+  
+  // Save weather preference when it changes
+  const handleWeatherToggle = (enabled: boolean) => {
+    setIncludeWeather(enabled);
+    localStorage.setItem('includeWeather', enabled.toString());
+  };
+  
+  // Save Claude API key to localStorage when it changes
+  const handleClaudeApiKeyChange = (value: string) => {
+    setClaudeApiKey(value);
+    if (value.trim()) {
+      localStorage.setItem('claudeApiKey', value.trim());
+    } else {
+      localStorage.removeItem('claudeApiKey');
+    }
+  };
+  
+  // Save AI preference when it changes
+  const handleAIToggle = (enabled: boolean) => {
+    setIncludeAI(enabled);
+    localStorage.setItem('includeAI', enabled.toString());
+  };
+  
+
+  const handleAnalyzeData = async () => {
+    if (!parsedData) return;
+
+    setUploadState('analyzing');
+    
+    try {
+      // Convert parsed data to the format expected by analyzeData
+      const analysisInput = parsedData.data.map(row => ({
+        datum: row.datum,
+        locatie: row.locatie,
+        omzet: row.omzet
+      }));
+
+      let result: AnalysisResult;
+
+      if (includeWeather) {
+        console.log('🌤️ ATTEMPTING WEATHER-ENHANCED ANALYSIS');
+        console.log('📊 Input data length:', analysisInput.length);
+        console.log('🔑 Using server-side API key');
+        
+        if (includeAI && claudeApiKey.trim()) {
+          console.log('🤖 ATTEMPTING AI + WEATHER ANALYSIS');
+          console.log('🔑 Claude API key (first 10 chars):', claudeApiKey.substring(0, 10));
+        }
+        
+        try {
+          result = await analyzeDataWithWeather(
+            analysisInput, 
+            'server-api-key', // Server will use environment API key instead
+            includeAI ? 'server-claude-key' : undefined, // Server will use environment Claude key
+            false // No events
+          );
+          console.log('✅ Enhanced analysis completed successfully');
+        } catch (weatherError) {
+          console.error('❌ Enhanced analysis FAILED:', weatherError);
+          console.error('Stack trace:', weatherError instanceof Error ? weatherError.stack : 'No stack available');
+          // Fall back to basic analysis
+          console.log('🔄 Falling back to basic analysis...');
+          result = analyzeData(analysisInput);
+        }
+      } else {
+        console.log('📊 Using basic analysis (no weather)');
+        result = analyzeData(analysisInput);
+      }
+      
+      // Store analysis data in sessionStorage to avoid URL length limits
+      sessionStorage.setItem('analysisResult', JSON.stringify(result));
+      // Store raw CSV data for weather analysis
+      sessionStorage.setItem('rawCsvData', JSON.stringify(analysisInput));
+      // Store Weather analysis flag for results page
+      if (includeWeather) {
+        sessionStorage.setItem('weatherAnalysis', 'true');
+      }
+      router.push('/results');
+      
+    } catch (err) {
+      console.error('Analysis error:', err);
+      setError(`Er ging iets mis bij het analyseren van de data: ${err}`);
+      setUploadState('error');
+    }
+  };
 
   const validateFile = (file: File): string | null => {
+    console.log('Validating file:', {
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      extension: file.name.split('.').pop()?.toLowerCase()
+    });
+
+    // Check file extension
     if (!file.name.toLowerCase().endsWith('.csv')) {
-      return 'Alleen CSV bestanden zijn toegestaan.';
+      return 'Alleen CSV bestanden zijn toegestaan. Zorg ervoor dat je bestand eindigt op .csv';
     }
+    
+    // Check if it's empty
     if (file.size === 0) {
       return 'Het bestand is leeg.';
     }
-    if (file.size > 5 * 1024 * 1024) { // 5MB limit
+    
+    // Check size limit (5MB)
+    if (file.size > 5 * 1024 * 1024) {
       return 'Het bestand is te groot. Maximaal 5MB toegestaan.';
     }
+    
+    // Check MIME type if available
+    if (file.type && !file.type.includes('text') && !file.type.includes('csv')) {
+      console.warn('Suspicious MIME type:', file.type);
+      return 'Dit lijkt geen tekstbestand te zijn. Zorg ervoor dat je een CSV bestand uploadt, geen Excel bestand (.xlsx) of ZIP bestand.';
+    }
+    
     return null;
   };
 
   const parseCSV = async (file: File): Promise<ParsedData> => {
     return new Promise((resolve, reject) => {
+      console.log('=== Starting Flexible CSV Parse ===');
+      console.log('File info:', {
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        lastModified: new Date(file.lastModified).toISOString()
+      });
+
       const reader = new FileReader();
+      
+      // Add error handler
+      reader.onerror = (e) => {
+        console.error('FileReader error:', e);
+        reject('Er ging iets mis bij het lezen van het bestand.');
+      };
+      
       reader.onload = (e) => {
         try {
-          const csv = e.target?.result as string;
-          const lines = csv.split('\n').filter(line => line.trim());
+          console.log('FileReader onload triggered');
+          console.log('Result type:', typeof e.target?.result);
           
-          if (lines.length < 2) {
-            reject('Het CSV bestand moet minimaal een header en een data rij bevatten.');
+          const result = e.target?.result;
+          if (!result) {
+            reject('Geen data gevonden in het bestand.');
             return;
           }
 
-          // Parse headers with better handling
-          const headerLine = lines[0];
-          console.log('Raw header line:', headerLine);
-          
-          const rawHeaders = headerLine.split(',').map(h => h.trim().replace(/['"]/g, ''));
-          console.log('Raw headers:', rawHeaders);
-          
-          const headers = rawHeaders.map(h => h.toLowerCase());
-          console.log('Processed headers:', headers);
-          
-          // Required headers (case-insensitive)
-          const requiredHeaders = ['datum', 'locatie', 'omzet'];
-          console.log('Required headers:', requiredHeaders);
-          
-          // Check for missing headers
-          const missingHeaders = requiredHeaders.filter(required => {
-            const found = headers.some(header => header === required);
-            console.log(`Checking for '${required}':`, found);
-            return !found;
-          });
-          
-          if (missingHeaders.length > 0) {
-            console.log('Missing headers:', missingHeaders);
-            console.log('Available headers:', headers);
-            reject(`Ontbrekende kolommen: ${missingHeaders.join(', ')}. 
-            
-Gevonden kolommen: ${rawHeaders.join(', ')}
-Verwacht: Datum, Locatie, Omzet
-
-Tip: Zorg ervoor dat je kolommen exact deze namen hebben (hoofdletters maken niet uit).`);
+          // Check if we got a string (not ArrayBuffer)
+          if (typeof result !== 'string') {
+            console.error('Expected string, got:', typeof result);
+            reject('Bestand wordt niet correct gelezen als tekst.');
             return;
           }
 
-          // Find column indices
-          const datumIndex = headers.findIndex(h => h === 'datum');
-          const locatieIndex = headers.findIndex(h => h === 'locatie');
-          const omzetIndex = headers.findIndex(h => h === 'omzet');
-          
-          console.log('Column indices - Datum:', datumIndex, 'Locatie:', locatieIndex, 'Omzet:', omzetIndex);
+          console.log('Raw file content (first 200 chars):', result.substring(0, 200));
+          console.log('File content length:', result.length);
 
-          const data: CSVData[] = [];
-          const errors: string[] = [];
-
-          // Parse data rows (limit to first 5 for preview)
-          const dataLines = lines.slice(1);
-          const previewLines = dataLines.slice(0, 5);
-          
-          for (let i = 0; i < previewLines.length; i++) {
-            const line = previewLines[i];
-            const values = line.split(',').map(v => v.trim().replace(/['"]/g, ''));
-            
-            if (values.length >= Math.max(datumIndex, locatieIndex, omzetIndex) + 1) {
-              data.push({
-                datum: values[datumIndex] || '',
-                locatie: values[locatieIndex] || '',
-                omzet: values[omzetIndex] || ''
-              });
-            }
+          // Check for binary data indicators
+          if (result.startsWith('PK') || result.includes('\x00') || result.includes('Content_Types')) {
+            reject('Dit lijkt geen CSV bestand te zijn. Zorg ervoor dat je een tekstbestand uploadt, geen ZIP of Excel bestand.');
+            return;
           }
 
-          console.log('Parsed data preview:', data);
-          console.log('Total data rows:', dataLines.length);
+          // Use flexible parser
+          console.log('🚀 Using FlexibleParser...');
+          const parseResult = FlexibleParser.parseData(result);
+          
+          console.log('✅ Flexible parsing completed:', parseResult);
 
-          // Set debug info for development
+          if (parseResult.data.length === 0 && parseResult.errors.length > 0) {
+            reject(parseResult.errors.join('\n'));
+            return;
+          }
+
+          // Convert to expected format
+          const data: CSVData[] = parseResult.data.map(row => ({
+            datum: row.date.toISOString().split('T')[0], // Convert Date to string
+            locatie: row.location,
+            omzet: row.amount.toString()
+          }));
+
+          // Set debug info
+          const formatInfo = parseResult.detectedFormat;
           setDebugInfo(`
-Debug Info:
-- File naam: ${file.name}
-- File grootte: ${file.size} bytes
-- Headers gevonden: ${rawHeaders.join(', ')}
-- Datum kolom index: ${datumIndex}
-- Locatie kolom index: ${locatieIndex}
-- Omzet kolom index: ${omzetIndex}
-- Aantal data rijen: ${dataLines.length}
-- Preview rijen: ${data.length}
+Flexible Parser Results:
+- Bestandsnaam: ${file.name}
+- Bestandsgrootte: ${file.size} bytes
+- Gedetecteerd formaat: ${formatInfo.separator} gescheiden
+- Datum formaat: ${formatInfo.dateFormat}
+- Headers: ${formatInfo.hasHeaders ? 'Ja' : 'Nee'}
+- Kolom volgorde: ${formatInfo.columnOrder.join(', ')}
+- Verwerkte rijen: ${parseResult.summary.successfulRows}/${parseResult.summary.totalRows}
+- Fouten: ${parseResult.summary.errorRows}
           `.trim());
 
           resolve({
             data,
-            totalRows: dataLines.length,
-            errors
+            totalRows: parseResult.summary.totalRows,
+            errors: parseResult.errors,
+            detectedFormat: parseResult.detectedFormat
           });
+          
         } catch (error) {
-          console.error('CSV parsing error:', error);
-          reject('Er ging iets mis bij het lezen van het CSV bestand.');
+          console.error('Flexible parsing error:', error);
+          reject(`Er ging iets mis bij het verwerken van het bestand: ${error}`);
         }
       };
+      
+      // Important: Use readAsText, not readAsArrayBuffer or readAsBinaryString
+      console.log('Starting to read file as text with UTF-8 encoding...');
       reader.readAsText(file, 'UTF-8');
     });
   };
@@ -194,9 +336,9 @@ Debug Info:
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <Link href="/" className="flex items-center">
-              <span className="text-2xl font-bold text-blue-800">🚚 FoodTruckSpot</span>
+              <span className="text-2xl font-bold text-slate-800">🚚 TruckSpot</span>
             </Link>
-            <Link href="/" className="text-slate-600 hover:text-blue-800 transition-colors">
+            <Link href="/" className="text-slate-600 hover:text-slate-800 transition-colors">
               ← Terug naar home
             </Link>
           </div>
@@ -236,7 +378,7 @@ Debug Info:
                     Sleep je CSV bestand hier naartoe
                   </p>
                   <p className="text-slate-600 mb-4">of</p>
-                  <label className="bg-blue-800 hover:bg-blue-900 text-white px-6 py-3 rounded-lg font-semibold cursor-pointer transition-colors">
+                  <label className="bg-slate-700 hover:bg-slate-800 text-white px-6 py-3 rounded-lg font-semibold cursor-pointer transition-colors">
                     Kies bestand
                     <input 
                       type="file" 
@@ -249,14 +391,29 @@ Debug Info:
               </div>
             </div>
 
-            {/* Example Format */}
+            {/* Example Formats */}
             <div className="mt-8 bg-stone-100 p-6 rounded-xl border border-stone-200">
-              <h3 className="font-semibold text-slate-900 mb-3">Verwacht formaat:</h3>
-              <div className="bg-white p-4 rounded-lg border border-stone-200 font-mono text-sm">
-                <div className="font-semibold text-slate-900">Datum,Locatie,Omzet</div>
-                <div className="text-slate-600">2024-01-15,Museumplein,450</div>
-                <div className="text-slate-600">2024-01-16,Vondelpark,320</div>
-                <div className="text-slate-600">2024-01-17,Leidseplein,680</div>
+              <h3 className="font-semibold text-slate-900 mb-3">✨ Ondersteunde formaten (automatisch gedetecteerd):</h3>
+              <div className="space-y-4">
+                <div className="bg-white p-4 rounded-lg border border-stone-200">
+                  <h4 className="font-medium text-slate-900 mb-2">Met headers (aanbevolen):</h4>
+                  <div className="font-mono text-sm space-y-1">
+                    <div className="font-semibold text-green-700">Datum,Locatie,Omzet</div>
+                    <div className="text-slate-600">2024-01-15,Museumplein,€450,50</div>
+                    <div className="text-slate-600">15-01-2024,Vondelpark,320.00</div>
+                  </div>
+                </div>
+                <div className="bg-white p-4 rounded-lg border border-stone-200">
+                  <h4 className="font-medium text-slate-900 mb-2">Zonder headers (automatisch detectie):</h4>
+                  <div className="font-mono text-sm space-y-1">
+                    <div className="text-slate-600">15/1/2024    Dam Square    445</div>
+                    <div className="text-slate-600">2024-01-16;Leidseplein;€680,00</div>
+                    <div className="text-slate-600">17-01-2024 | Vondelpark | 320</div>
+                  </div>
+                </div>
+                <div className="text-sm text-slate-600 mt-3">
+                  <p><span className="font-medium">Ondersteunt:</span> Verschillende scheidingstekens (comma, puntkomma, tab, spatie), datum formaten (DD-MM-YYYY, YYYY-MM-DD, DD/MM/YYYY), bedrag formaten (€450,50, 450.00, 450)</p>
+                </div>
               </div>
             </div>
 
@@ -276,8 +433,16 @@ Debug Info:
         
         {uploadState === 'uploading' && (
           <div className="text-center py-12">
-            <div className="animate-spin inline-block w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full mb-4"></div>
+            <div className="animate-spin inline-block w-8 h-8 border-4 border-slate-600 border-t-transparent rounded-full mb-4"></div>
             <p className="text-lg text-slate-600">Bestand wordt verwerkt...</p>
+          </div>
+        )}
+        
+        {uploadState === 'analyzing' && (
+          <div className="text-center py-12">
+            <div className="animate-spin inline-block w-8 h-8 border-4 border-slate-600 border-t-transparent rounded-full mb-4"></div>
+            <p className="text-lg text-slate-600">Data wordt geanalyseerd...</p>
+            <p className="text-sm text-slate-500 mt-2">Dit kan even duren</p>
           </div>
         )}
         
@@ -292,13 +457,43 @@ Debug Info:
                 </h2>
               </div>
               <p className="text-green-700">
-                <strong>{parsedData.totalRows} verkoopdagen gevonden</strong>
+                <strong>{parsedData.totalRows} verkooprecords gevonden</strong>
               </p>
             </div>
 
+            {/* Format Detection Summary */}
+            {parsedData.detectedFormat && (
+              <div className="bg-blue-50 p-4 rounded-xl border border-blue-200 mb-6">
+                <h3 className="font-semibold text-blue-900 mb-3">📊 Automatisch gedetecteerd formaat:</h3>
+                <div className="grid md:grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p><span className="font-medium">Scheidingsteken:</span> {parsedData.detectedFormat.separator === 'comma' ? 'Komma (,)' : parsedData.detectedFormat.separator === 'tab' ? 'Tab' : parsedData.detectedFormat.separator === 'space' ? 'Spatie' : parsedData.detectedFormat.separator}</p>
+                    <p><span className="font-medium">Datum formaat:</span> {parsedData.detectedFormat.dateFormat}</p>
+                  </div>
+                  <div>
+                    <p><span className="font-medium">Headers:</span> {parsedData.detectedFormat.hasHeaders ? 'Ja' : 'Nee'}</p>
+                    <p><span className="font-medium">Kolommen:</span> {parsedData.detectedFormat.columnOrder.join(', ')}</p>
+                  </div>
+                </div>
+                {parsedData.errors.length > 0 && (
+                  <div className="mt-3 p-3 bg-amber-50 rounded border border-amber-200">
+                    <p className="text-sm font-medium text-amber-800 mb-2">⚠️ Waarschuwingen bij verwerking:</p>
+                    <ul className="text-sm text-amber-700 space-y-1">
+                      {parsedData.errors.slice(0, 3).map((error, index) => (
+                        <li key={index}>• {error}</li>
+                      ))}
+                      {parsedData.errors.length > 3 && (
+                        <li>• ... en nog {parsedData.errors.length - 3} waarschuwingen</li>
+                      )}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Data Preview */}
             <div className="bg-stone-100 p-6 rounded-xl border border-stone-200">
-              <h3 className="font-semibold text-slate-900 mb-4">Voorbeeld van je data:</h3>
+              <h3 className="font-semibold text-slate-900 mb-4">✅ Verwerkte data preview:</h3>
               <div className="overflow-x-auto">
                 <table className="w-full bg-white rounded-lg border border-stone-200">
                   <thead className="bg-stone-50">
@@ -309,7 +504,7 @@ Debug Info:
                     </tr>
                   </thead>
                   <tbody>
-                    {parsedData.data.map((row, index) => (
+                    {parsedData.data.slice(0, 5).map((row, index) => (
                       <tr key={index} className="border-t border-stone-200">
                         <td className="px-4 py-3 text-slate-700">{row.datum}</td>
                         <td className="px-4 py-3 text-slate-700">{row.locatie}</td>
@@ -319,26 +514,112 @@ Debug Info:
                   </tbody>
                 </table>
               </div>
-              {parsedData.totalRows > 5 && (
+              {parsedData.data.length > 5 && (
                 <p className="text-sm text-slate-600 mt-3">
-                  ... en nog {parsedData.totalRows - 5} rijen meer
+                  ... en nog {parsedData.data.length - 5} rijen meer (totaal {parsedData.totalRows} verkooprecords)
                 </p>
+              )}
+            </div>
+
+            {/* Weather Analysis Options */}
+            <div className="bg-blue-50 p-6 rounded-xl border border-blue-200 mb-4">
+              <div className="flex items-center mb-4">
+                <input
+                  type="checkbox"
+                  id="includeWeather"
+                  checked={includeWeather}
+                  onChange={(e) => handleWeatherToggle(e.target.checked)}
+                  className="w-4 h-4 text-slate-600 bg-gray-100 border-gray-300 rounded focus:ring-slate-500"
+                />
+                <label htmlFor="includeWeather" className="ml-3 text-lg font-semibold text-slate-900">
+                  🌤️ Weer-analyse toevoegen
+                </label>
+              </div>
+              
+              {includeWeather && (
+                <div className="space-y-4">
+                  <div className="bg-green-100 p-4 rounded-lg">
+                    <p className="text-sm text-green-800 mb-2">
+                      ✅ <strong>Automatische weerdata</strong> - Gebruikt real-time Meteostat API voor nauwkeurige historische weergegevens
+                    </p>
+                    <p className="text-xs text-green-700">
+                      Geen API key nodig - het systeem gebruikt automatisch onze geïntegreerde Meteostat API voor Amsterdam weerdata
+                    </p>
+                  </div>
+                  
+                  <div className="bg-blue-100 p-4 rounded-lg">
+                    <h4 className="font-semibold text-blue-900 mb-2">Weer-analyse geeft je:</h4>
+                    <ul className="text-sm text-blue-800 space-y-1">
+                      <li>• Correlatie tussen weer en omzet</li>
+                      <li>• Impact van regen/zon op verkoop</li>
+                      <li>• Optimale temperatuur voor verkoop</li>
+                      <li>• Weer-specifieke strategieën</li>
+                    </ul>
+                  </div>
+                </div>
+              )}
+            </div>
+
+
+            {/* AI Analysis Options */}
+            <div className="bg-purple-50 p-6 rounded-xl border border-purple-200 mb-8">
+              <div className="flex items-center mb-4">
+                <input
+                  type="checkbox"
+                  id="includeAI"
+                  checked={includeAI}
+                  onChange={(e) => handleAIToggle(e.target.checked)}
+                  className="w-4 h-4 text-slate-600 bg-gray-100 border-gray-300 rounded focus:ring-slate-500"
+                />
+                <label htmlFor="includeAI" className="ml-3 text-lg font-semibold text-slate-900">
+                  🤖 AI-gestuurde inzichten toevoegen
+                </label>
+              </div>
+              
+              {includeAI && (
+                <div className="space-y-4">
+                  <div className="bg-green-100 p-4 rounded-lg">
+                    <p className="text-sm text-green-800 mb-2">
+                      ✅ <strong>Automatische AI-analyse</strong> - Gebruikt ingebouwde Claude AI voor geavanceerde inzichten
+                    </p>
+                    <p className="text-xs text-green-700">
+                      Geen API key nodig - het systeem gebruikt automatisch onze geïntegreerde Claude AI voor strategische aanbevelingen
+                    </p>
+                  </div>
+                  
+                  <div className="bg-purple-100 p-4 rounded-lg">
+                    <h4 className="font-semibold text-purple-900 mb-2">AI-analyse geeft je:</h4>
+                    <ul className="text-sm text-purple-800 space-y-1">
+                      <li>• Diepe inzichten die je zelf misschien mist</li>
+                      <li>• Strategische aanbevelingen op maat</li>
+                      <li>• Concrete acties voor omzetverbetering</li>
+                      <li>• Kansen en risico-analyse</li>
+                      <li>• Locatie- en timing-optimalisatie</li>
+                    </ul>
+                  </div>
+                </div>
               )}
             </div>
 
             {/* Analyze Button */}
             <div className="text-center">
               <button 
-                className="bg-green-600 hover:bg-green-700 text-white px-12 py-4 rounded-lg text-xl font-semibold transition-colors"
-                onClick={() => {
-                  // TODO: Navigate to analysis page
-                  alert('Analyse functionaliteit komt binnenkort!');
-                }}
+                className="bg-slate-700 hover:bg-slate-800 text-white px-12 py-4 rounded-lg text-xl font-semibold transition-colors disabled:bg-slate-400"
+                onClick={handleAnalyzeData}
+                disabled={(uploadState as any) === 'analyzing'}
               >
-                Analyseer mijn data
+                {(uploadState as any) === 'analyzing' ? 'Analyseren...' : 
+                 includeAI && includeWeather ? 'Analyseer met AI + Weer' : 
+                 includeAI ? 'Analyseer met AI' :
+                 includeWeather ? 'Analyseer met weer-data' : 
+                 'Analyseer mijn data'}
               </button>
               <p className="text-sm text-slate-600 mt-3">
                 Je data wordt veilig verwerkt en niet opgeslagen
+                {includeWeather && <br />}
+                {includeWeather && 'Echte historische weerdata via Meteostat API'}
+                {includeAI && <br />}
+                {includeAI && 'AI-analyse wordt gegenereerd door Claude'}
               </p>
             </div>
 
@@ -349,11 +630,15 @@ Debug Info:
                   setUploadState('idle');
                   setParsedData(null);
                   setError('');
+                  // Keep weather settings and API key saved
                 }}
-                className="text-blue-800 hover:text-blue-900 font-medium"
+                className="text-slate-700 hover:text-slate-800 font-medium"
               >
                 ↻ Upload een ander bestand
               </button>
+              <p className="text-xs text-slate-500 mt-2">
+                Je analyse-instellingen (weer en AI) blijven bewaard
+              </p>
             </div>
           </div>
         )}

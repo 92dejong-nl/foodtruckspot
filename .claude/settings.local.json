@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run dev:*)",
+      "Bash(curl:*)",
+      "Bash(node:*)",
+      "Bash(rm:*)",
+      "Bash(grep:*)",
+      "WebFetch(domain:api.data.amsterdam.nl)",
+      "Bash(npm run build:*)",
+      "Bash(touch:*)",
+      "WebFetch(domain:dev.meteostat.net)"
+    ],
+    "deny": [],
+    "additionalDirectories": [
+      "C:\\c\\Users\\hanst"
+    ]
+  }
+}
