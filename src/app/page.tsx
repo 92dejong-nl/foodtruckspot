@@ -3,6 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useState, useRef, useEffect } from 'react';
+import { Navigation } from "@/components/navigation";
 
 // Screenshot Slider Component
 function ScreenshotSlider() {
@@ -47,11 +48,29 @@ function ScreenshotSlider() {
 
   // Auto-advance carousel
   useEffect(() => {
-    if (!isPaused) {
+    if (!isPaused && !fullscreenImage) {
       const interval = setInterval(nextSlide, 5000);
       return () => clearInterval(interval);
     }
-  }, [isPaused]);
+  }, [isPaused, fullscreenImage]);
+
+  // Keyboard navigation for fullscreen
+  useEffect(() => {
+    if (fullscreenImage) {
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'ArrowLeft') {
+          prevSlideFullscreen();
+        } else if (e.key === 'ArrowRight') {
+          nextSlideFullscreen();
+        } else if (e.key === 'Escape') {
+          closeFullscreen();
+        }
+      };
+
+      document.addEventListener('keydown', handleKeyDown);
+      return () => document.removeEventListener('keydown', handleKeyDown);
+    }
+  }, [fullscreenImage, currentSlide]);
 
   const handleMouseEnter = () => setIsPaused(true);
   const handleMouseLeave = () => setIsPaused(false);
@@ -59,10 +78,28 @@ function ScreenshotSlider() {
   const openFullscreen = (imageSrc: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setFullscreenImage(imageSrc);
+    // Set the current slide to match the clicked image
+    const imageIndex = screenshots.findIndex(screenshot => screenshot.src === imageSrc);
+    if (imageIndex !== -1) {
+      setCurrentSlide(imageIndex);
+    }
+    // No scrolling - let modal position itself naturally
   };
-  
+
   const closeFullscreen = () => {
     setFullscreenImage(null);
+  };
+
+  const nextSlideFullscreen = () => {
+    const nextIndex = (currentSlide + 1) % screenshots.length;
+    setCurrentSlide(nextIndex);
+    setFullscreenImage(screenshots[nextIndex].src);
+  };
+
+  const prevSlideFullscreen = () => {
+    const prevIndex = (currentSlide - 1 + screenshots.length) % screenshots.length;
+    setCurrentSlide(prevIndex);
+    setFullscreenImage(screenshots[prevIndex].src);
   };
 
   return (
@@ -80,9 +117,9 @@ function ScreenshotSlider() {
         >
           {screenshots.map((screenshot, index) => (
             <div key={index} className="w-full flex-shrink-0 relative">
-              <div 
+              <div
                 className="bg-gradient-to-br from-white/95 to-white/90 backdrop-blur-sm border border-blue-200/50 shadow-xl mx-2 sm:mx-4 h-full overflow-hidden rounded-xl cursor-pointer group"
-                onClick={nextSlide}
+                onClick={(e) => openFullscreen(screenshot.src, e)}
               >
                 <div className="relative h-64 lg:h-80">
                   <Image
@@ -95,25 +132,7 @@ function ScreenshotSlider() {
                   />
                   {/* Click indicator */}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                  
-                  {/* Navigation button - bottom right */}
-                  <div className="absolute bottom-4 right-4">
-                    <div className="bg-white/90 backdrop-blur-sm rounded-full p-3 shadow-lg transition-all duration-300 group-hover:scale-110">
-                      <svg className="w-5 h-5 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </div>
-                  </div>
 
-                  {/* Fullscreen button - top right */}
-                  <button
-                    onClick={(e) => openFullscreen(screenshot.src, e)}
-                    className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm rounded-full p-2 shadow-lg transition-all duration-300 hover:scale-110 opacity-0 group-hover:opacity-100"
-                  >
-                    <svg className="w-4 h-4 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-                    </svg>
-                  </button>
                 </div>
                 <div className="p-3 sm:p-4 text-center bg-gradient-to-r from-blue-50/80 to-sky-50/80">
                   <h5 className="text-sm sm:text-lg font-semibold text-slate-800 leading-tight group-hover:text-blue-700 transition-colors duration-300">{screenshot.title}</h5>
@@ -169,41 +188,94 @@ function ScreenshotSlider() {
       </div>
 
 
-      {/* Popup Modal */}
+      {/* Enhanced Fullscreen Modal */}
       {fullscreenImage && (
         <>
           {/* Backdrop */}
-          <div 
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 transition-opacity duration-300"
+          <div
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-40 transition-opacity duration-300"
             onClick={closeFullscreen}
           />
-          
+
           {/* Popup Container */}
-          <div className="fixed inset-0 flex items-center justify-center z-50 p-4 pointer-events-none">
-            <div 
-              className="relative max-w-5xl w-full pointer-events-auto transform transition-all duration-300 animate-in zoom-in-95"
+          <div className="fixed inset-0 flex items-end justify-center z-50 p-4 pb-8">
+            <div
+              className="relative max-w-6xl w-full transform transition-all duration-300 animate-in zoom-in-95"
               onClick={(e) => e.stopPropagation()}
             >
+              {/* Navigation Arrows */}
+              <button
+                onClick={prevSlideFullscreen}
+                className="absolute left-4 top-1/2 transform -translate-y-1/2 bg-white/95 hover:bg-white p-4 rounded-full shadow-2xl transition-all duration-300 hover:scale-110 z-20"
+                title="Vorige afbeelding"
+              >
+                <svg className="w-6 h-6 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+
+              <button
+                onClick={nextSlideFullscreen}
+                className="absolute right-4 top-1/2 transform -translate-y-1/2 bg-white/95 hover:bg-white p-4 rounded-full shadow-2xl transition-all duration-300 hover:scale-110 z-20"
+                title="Volgende afbeelding"
+              >
+                <svg className="w-6 h-6 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+
               {/* Close button */}
               <button
                 onClick={closeFullscreen}
-                className="absolute -top-4 -right-4 bg-white hover:bg-slate-50 rounded-full p-3 shadow-xl transition-all duration-300 hover:scale-110 z-10"
+                className="absolute -top-4 -right-4 bg-white hover:bg-slate-50 rounded-full p-3 shadow-xl transition-all duration-300 hover:scale-110 z-30"
+                title="Sluiten"
               >
                 <svg className="w-6 h-6 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
-              
-              {/* Image popup */}
-              <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden transform transition-transform duration-300">
-                <Image
-                  src={fullscreenImage}
-                  alt="Popup view"
-                  width={1200}
-                  height={800}
-                  className="object-contain w-full max-h-[80vh]"
-                  quality={100}
-                />
+
+              {/* Image popup with enhanced styling */}
+              <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+                <div className="relative">
+                  <Image
+                    src={fullscreenImage}
+                    alt={screenshots.find(s => s.src === fullscreenImage)?.alt || "Screenshot"}
+                    width={1400}
+                    height={900}
+                    className="object-contain w-full max-h-[80vh]"
+                    quality={100}
+                    priority
+                  />
+
+                  {/* Image title overlay */}
+                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-6">
+                    <h3 className="text-white text-lg font-semibold">
+                      {screenshots.find(s => s.src === fullscreenImage)?.title}
+                    </h3>
+                    <p className="text-white/80 text-sm mt-1">
+                      {currentSlide + 1} van {screenshots.length}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Fullscreen dots navigation */}
+              <div className="flex justify-center mt-6 space-x-3">
+                {screenshots.map((_, index) => (
+                  <button
+                    key={index}
+                    onClick={() => {
+                      setCurrentSlide(index);
+                      setFullscreenImage(screenshots[index].src);
+                    }}
+                    className={`transition-all duration-300 rounded-full ${
+                      index === currentSlide
+                        ? 'w-12 h-3 bg-white shadow-lg'
+                        : 'w-3 h-3 bg-white/50 hover:bg-white/70 hover:scale-125'
+                    }`}
+                  />
+                ))}
               </div>
             </div>
           </div>
@@ -410,43 +482,7 @@ function VideoPlayer() {
 export default function Home() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-sky-50">
-      {/* Navigation */}
-      <nav className="bg-blue-100/80 backdrop-blur-sm border-b border-blue-200 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-40">
-            <button 
-              onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-              className="flex items-center space-x-3 hover:scale-105 transition-transform duration-200"
-            >
-              <Image
-                src="/images/hero1.jpeg"
-                alt="WeerOmzet Logo"
-                width={150}
-                height={150}
-                className="rounded-lg"
-                priority
-              />
-              <span className="text-2xl font-bold text-slate-800">WeerOmzet</span>
-            </button>
-            <div className="hidden md:flex space-x-8">
-              <a href="#prijzen" className="text-lg text-slate-600 hover:text-slate-800 transition-colors font-medium">
-                Prijs
-              </a>
-              <a href="#faq" className="text-lg text-slate-600 hover:text-slate-800 transition-colors font-medium">
-                Veelgestelde vragen
-              </a>
-              <a href="#contact" className="text-lg text-slate-600 hover:text-slate-800 transition-colors font-medium">
-                Contact
-              </a>
-            </div>
-            <div className="flex items-center">
-              <Link href="/upload" className="bg-slate-700 hover:bg-slate-800 text-white px-6 py-2 rounded-lg font-semibold transition-colors">
-                Data Uploaden
-              </Link>
-            </div>
-          </div>
-        </div>
-      </nav>
+      <Navigation />
 
 
 
@@ -476,11 +512,11 @@ export default function Home() {
                 </div>
                 
                 <div className="flex flex-col sm:flex-row gap-4">
-                  <a href="#demo" className="bg-slate-700 hover:bg-slate-800 text-white px-8 py-4 rounded-lg text-lg font-semibold transition-colors inline-block text-center">
-                    Demo bekijken
-                  </a>
-                  <a href="#prijzen" className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-8 py-4 rounded-lg text-lg font-semibold transition-colors inline-block text-center border border-slate-300">
-                    Bekijk prijs
+                  <Link href="/auth/register" className="bg-[#003f7a] hover:bg-[#002d5a] text-white px-8 py-4 rounded-lg text-lg font-semibold transition-colors inline-block text-center">
+                    Probeer gratis voor 30 dagen
+                  </Link>
+                  <a href="#demo" className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-8 py-4 rounded-lg text-lg font-semibold transition-colors inline-block text-center border border-slate-300">
+                    Bekijk Demo
                   </a>
                 </div>
               </div>
@@ -617,7 +653,7 @@ export default function Home() {
                 Eén simpele prijs. Altijd opzegbaar.
               </h2>
               <p className="text-xl text-slate-600">
-                Handig dashboard voor €10 per maand. Meer niet.
+                Handig dashboard voor €10 per maand. Meer niet. 30 dagen gratis proef.
               </p>
             </div>
           </AnimatedCard>
@@ -655,7 +691,7 @@ export default function Home() {
                       <span className="text-slate-700">Altijd toegang tot je persoonlijke dashboard</span>
                     </li>
                   </ul>
-                  <Link href="/upload" className="w-full bg-slate-700 hover:bg-slate-800 text-white py-4 px-6 rounded-lg text-lg font-semibold transition-colors block text-center">
+                  <Link href="/auth/register" className="w-full bg-[#003f7a] hover:bg-[#002d5a] text-white py-4 px-6 rounded-lg text-lg font-semibold transition-colors block text-center">
                     Start vandaag
                   </Link>
                 </div>
@@ -698,6 +734,12 @@ export default function Home() {
               <FAQItem
                 question="Wordt mijn data veilig bewaard?"
                 answer="Absoluut. Alle data wordt versleuteld opgeslagen en alleen gebruikt voor jouw persoonlijke analyses. We delen nooit data met derden."
+              />
+            </AnimatedCard>
+            <AnimatedCard delay={500}>
+              <FAQItem
+                question="Hoe werkt de 30 dagen gratis proef?"
+                answer="Je krijgt 30 dagen volledige toegang tot alle functies. Je kunt binnen deze periode kosteloos opzeggen - er zijn dan geen kosten aan verbonden. Na 30 dagen gaat het abonnement automatisch door voor €10 per maand, tenzij je eerder opzegt."
               />
             </AnimatedCard>
           </div>

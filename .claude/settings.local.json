@@ -9,7 +9,10 @@
       "WebFetch(domain:api.data.amsterdam.nl)",
       "Bash(npm run build:*)",
       "Bash(touch:*)",
-      "WebFetch(domain:dev.meteostat.net)"
+      "WebFetch(domain:dev.meteostat.net)",
+      "Bash(npm install)",
+      "Bash(npx prisma:*)",
+      "Bash(npm install:*)"
     ],
     "deny": [],
     "additionalDirectories": [
