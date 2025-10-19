@@ -16,56 +16,58 @@ export function Navigation() {
           <div className="flex items-center justify-between">
             <button
               onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-              className="flex items-center space-x-3 hover:scale-105 transition-transform duration-200"
+              className="flex items-center space-x-2 hover:scale-105 transition-transform duration-200 flex-shrink-0"
             >
               <Image
                 src="/images/hero1.jpeg"
                 alt="WeerOmzet Logo"
-                width={80}
-                height={80}
+                width={60}
+                height={60}
                 className="rounded-lg"
                 priority
               />
-              <span className="text-xl font-bold text-[#003f7a]">WeerOmzet</span>
+              <span className="text-lg font-bold text-[#003f7a]">WeerOmzet</span>
             </button>
 
             {/* Mobile Auth Buttons */}
-            {status === 'loading' ? (
-              <div className="flex items-center space-x-2">
-                <div className="bg-slate-200 animate-pulse h-8 w-20 rounded-lg"></div>
-                <div className="bg-slate-200 animate-pulse h-8 w-20 rounded-lg"></div>
-              </div>
-            ) : session ? (
-              <div className="flex items-center space-x-2">
-                <Link
-                  href="/dashboard"
-                  className="bg-[#003f7a] hover:bg-[#002d5a] text-white px-3 py-2 rounded-lg font-semibold transition-colors text-sm"
-                >
-                  Dashboard
-                </Link>
-                <button
-                  onClick={() => signOut({ callbackUrl: '/' })}
-                  className="bg-slate-600 hover:bg-slate-700 text-white px-3 py-2 rounded-lg font-semibold transition-colors text-sm"
-                >
-                  Uitloggen
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center space-x-2">
-                <Link
-                  href="/auth/login"
-                  className="text-slate-600 hover:text-slate-800 font-medium transition-colors text-sm"
-                >
-                  Inloggen
-                </Link>
-                <Link
-                  href="/auth/register"
-                  className="bg-[#003f7a] hover:bg-[#002d5a] text-white px-3 py-2 rounded-lg font-semibold transition-colors text-sm"
-                >
-                  Start gratis trial
-                </Link>
-              </div>
-            )}
+            <div className="flex items-center space-x-1 flex-shrink-0">
+              {status === 'loading' ? (
+                <>
+                  <div className="bg-slate-200 animate-pulse h-8 w-16 rounded-lg"></div>
+                  <div className="bg-slate-200 animate-pulse h-8 w-16 rounded-lg"></div>
+                </>
+              ) : session ? (
+                <>
+                  <Link
+                    href="/dashboard"
+                    className="bg-[#003f7a] hover:bg-[#002d5a] text-white px-2 py-2 rounded-lg font-semibold transition-colors text-xs"
+                  >
+                    Dashboard
+                  </Link>
+                  <button
+                    onClick={() => signOut({ callbackUrl: '/' })}
+                    className="bg-slate-600 hover:bg-slate-700 text-white px-2 py-2 rounded-lg font-semibold transition-colors text-xs"
+                  >
+                    Uit
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Link
+                    href="/auth/login"
+                    className="text-slate-600 hover:text-slate-800 font-medium transition-colors text-xs px-2 py-2"
+                  >
+                    Login
+                  </Link>
+                  <Link
+                    href="/auth/register"
+                    className="bg-[#003f7a] hover:bg-[#002d5a] text-white px-2 py-2 rounded-lg font-semibold transition-colors text-xs"
+                  >
+                    Trial
+                  </Link>
+                </>
+              )}
+            </div>
           </div>
 
           {/* Navigation links row */}
